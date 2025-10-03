@@ -27,6 +27,12 @@ def remove_watermarks(input_video, output_video, watermark_events):
 
     print(f"Processing video: {input_video}")
     print(f"FPS: {fps}, Dimensions: {width}x{height}, Total Frames: {total_frames}")
+    print(f"Watermark events to process: {len(watermark_events)}")
+    for i, event in enumerate(watermark_events, 1):
+        print(f"  Event {i}: {event['shape']} @ ({event['x']},{event['y']},{event['w']},{event['h']}) "
+              f"from {event['start']}s to {event['end']}s, "
+              f"algorithm={event.get('algorithm', 'telea')}, "
+              f"passes={event.get('passes', 1)}")
 
     frame_number = 0
     while cap.isOpened():
@@ -66,8 +72,17 @@ def remove_watermarks(input_video, output_video, watermark_events):
                     ksize = feather * 2 + 1
                     mask = cv2.GaussianBlur(mask, (ksize, ksize), 0)
 
-                # Apply inpainting with larger radius for better results
-                processed_frame = cv2.inpaint(processed_frame, mask, 7, cv2.INPAINT_TELEA)
+                # Get inpainting parameters
+                algorithm = event.get('algorithm', 'telea')
+                radius = event.get('radius', 7)
+                passes = event.get('passes', 1)
+                
+                # Select inpainting algorithm
+                inpaint_method = cv2.INPAINT_TELEA if algorithm == 'telea' else cv2.INPAINT_NS
+                
+                # Apply multi-pass inpainting for better results
+                for pass_num in range(passes):
+                    processed_frame = cv2.inpaint(processed_frame, mask, radius, inpaint_method)
 
         out.write(processed_frame)
 
@@ -163,15 +178,18 @@ def main():
         '-w', '--watermarks',
         required=True,
         nargs='+',
-        help="""Watermark definition(s) in the format: 'x,y,w,h,start_sec,end_sec[,shape[,feather]]'
+        help="""Watermark definition(s) in the format: 'x,y,w,h,start_sec,end_sec[,shape[,feather[,algorithm[,radius[,passes]]]]]'
 Shapes: 'rect', 'ellipse' (default), 'circle'
 Feather: blur amount for softer edges (default: 5, 0 for sharp edges)
+Algorithm: 'telea' (default, fast) or 'ns' (Navier-Stokes, better quality)
+Radius: inpainting radius in pixels (default: 7, range: 1-25)
+Passes: number of inpainting iterations (default: 1, range: 1-5)
 
 Examples:
--w "50,50,100,20,0,3"                    # ellipse with default feather
--w "50,50,100,20,0,3,rect"               # rectangle with default feather
--w "50,50,100,20,0,3,ellipse,10"         # ellipse with heavy feathering
--w "300,400,120,120,3,6,circle,3"        # circle with light feathering
+-w "50,50,100,20,0,3"                           # basic: ellipse, default settings
+-w "50,50,100,20,0,3,rect,5,ns"                 # NS algorithm for better quality
+-w "50,50,100,20,0,3,ellipse,10,telea,10,2"     # 2 passes with radius 10
+-w "300,400,120,120,3,6,circle,3,ns,5,3"        # circle, NS algorithm, 3 passes
 """
     )
     parser.add_argument(
@@ -184,8 +202,8 @@ Examples:
     try:
         for w_str in args.watermarks:
             parts = w_str.split(',')
-            if len(parts) < 6 or len(parts) > 8:
-                raise ValueError("Definition must have 6-8 comma-separated values.")
+            if len(parts) < 6 or len(parts) > 11:
+                raise ValueError("Definition must have 6-11 comma-separated values.")
             
             # Parse numeric values
             x, y, w, h, start, end = [int(p) for p in parts[:6]]
@@ -200,15 +218,33 @@ Examples:
             if feather < 0:
                 raise ValueError("Feather value must be non-negative.")
             
+            # Parse optional algorithm (default: 'telea')
+            algorithm = parts[8].lower() if len(parts) > 8 else 'telea'
+            if algorithm not in ['telea', 'ns']:
+                raise ValueError(f"Invalid algorithm '{algorithm}'. Must be 'telea' or 'ns'.")
+            
+            # Parse optional radius (default: 7)
+            radius = int(parts[9]) if len(parts) > 9 else 7
+            if radius < 1 or radius > 25:
+                raise ValueError(f"Radius must be between 1 and 25, got {radius}.")
+            
+            # Parse optional passes (default: 1)
+            passes = int(parts[10]) if len(parts) > 10 else 1
+            if passes < 1 or passes > 5:
+                raise ValueError(f"Passes must be between 1 and 5, got {passes}.")
+            
             event = {
                 'x': x, 'y': y, 'w': w, 'h': h,
                 'start': start, 'end': end,
                 'shape': shape,
-                'feather': feather
+                'feather': feather,
+                'algorithm': algorithm,
+                'radius': radius,
+                'passes': passes
             }
             watermark_events.append(event)
     except (ValueError, IndexError) as e:
-        print(f"Error: Invalid watermark format in '{w_str}'. Please use 'x,y,w,h,start,end[,shape[,feather]]'.")
+        print(f"Error: Invalid watermark format in '{w_str}'. Please use 'x,y,w,h,start,end[,shape[,feather[,algorithm[,radius[,passes]]]]]'.")
         print(f"Details: {e}")
         return
 

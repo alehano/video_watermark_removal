@@ -14,5 +14,5 @@ for infile in in/*.mp4; do
         echo "Skipping $outfile (already exists)"
         continue
     fi
-    ./start.sh -i "$infile" -o "$outfile" -w "20,80,180,75,0,3" "538,600,180,60,2,5" "20,1020,180,75,4,8" "20,80,180,75,7,10"
+    ./start.sh -i "$infile" -o "$outfile" -w "20,80,180,75,0,3,ellipse,5,ns" "538,600,180,60,2,5,ellipse,5,ns" "20,1020,180,75,4,8,ellipse,5,ns" "20,80,180,75,7,10,ellipse,5,ns"
 done
