@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Check that 'in' and 'out' directories exist
+if [ ! -d "in" ] || [ ! -d "out" ]; then
+    echo "Error: 'in' and 'out' directories must exist."
+    echo "Please create them before running this script. And put videos into 'in' directory."
+    exit 1
+fi
+
 for infile in in/*.mp4; do
     filename=$(basename "$infile")
     outfile="out/$filename"
